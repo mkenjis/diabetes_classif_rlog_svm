@@ -1,0 +1,164 @@
+
+val df = spark.read.format("csv").option("header","true").option("inferSchema","true").load("diabetes/diabetes.csv")
+
+scala> df.printSchema
+root
+ |-- Pregnancies: integer (nullable = true)
+ |-- Glucose: integer (nullable = true)
+ |-- BloodPressure: integer (nullable = true)
+ |-- SkinThickness: integer (nullable = true)
+ |-- Insulin: integer (nullable = true)
+ |-- BMI: double (nullable = true)
+ |-- DiabetesPedigreeFunction: double (nullable = true)
+ |-- Age: integer (nullable = true)
+ |-- Outcome: integer (nullable = true)
+ 
+scala> df.show(10)
++-----------+-------+-------------+-------------+-------+----+------------------------+---+-------+
+|Pregnancies|Glucose|BloodPressure|SkinThickness|Insulin| BMI|DiabetesPedigreeFunction|Age|Outcome|
++-----------+-------+-------------+-------------+-------+----+------------------------+---+-------+
+|          6|    148|           72|           35|      0|33.6|                   0.627| 50|      1|
+|          1|     85|           66|           29|      0|26.6|                   0.351| 31|      0|
+|          8|    183|           64|            0|      0|23.3|                   0.672| 32|      1|
+|          1|     89|           66|           23|     94|28.1|                   0.167| 21|      0|
+|          0|    137|           40|           35|    168|43.1|                   2.288| 33|      1|
+|          5|    116|           74|            0|      0|25.6|                   0.201| 30|      0|
+|          3|     78|           50|           32|     88|31.0|                   0.248| 26|      1|
+|         10|    115|            0|            0|      0|35.3|                   0.134| 29|      0|
+|          2|    197|           70|           45|    543|30.5|                   0.158| 53|      1|
+|          8|    125|           96|            0|      0| 0.0|                   0.232| 54|      1|
++-----------+-------+-------------+-------------+-------+----+------------------------+---+-------+
+ 
+val rdd = df.rdd.map( x => x.toSeq.toArray )
+
+scala> rdd.take(10)
+res5: Array[Array[Any]] = Array(Array(6, 148, 72, 35, 0, 33.6, 0.627, 50, 1), Array(1, 85, 66, 29, 0, 26.6, 0.351, 31, 0), Array(8, 183, 64, 0, 0, 23.3, 0.672, 32, 1), Array(1, 89, 66, 23, 94, 28.1, 0.167, 21, 0), Array(0, 137, 40, 35, 168, 43.1, 2.288, 33, 1), Array(5, 116, 74, 0, 0, 25.6, 0.201, 30, 0), Array(3, 78, 50, 32, 88, 31.0, 0.248, 26, 1), Array(10, 115, 0, 0, 0, 35.3, 0.134, 29, 0), Array(2, 197, 70, 45, 543, 30.5, 0.158, 53, 1), Array(8, 125, 96, 0, 0, 0.0, 0.232, 54, 1))
+
+val rdd1 = rdd.map( x => x.map( y => y.toString.toDouble ))
+
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.regression.LabeledPoint
+
+val data = rdd1.map( x => {
+   val arr_size = x.size - 1
+   val l = x(arr_size)
+   val f = Vectors.dense(x.slice(0, arr_size-1))
+   LabeledPoint(l,f)
+ })
+	 
+val sets = data.randomSplit(Array(0.8,0.2))
+val trainSet = sets(0)
+val testSet = sets(1)
+
+trainSet.cache
+
+---- MLlib logistic regression --------------
+
+import org.apache.spark.mllib.classification.LogisticRegressionWithSGD
+val numIterations = 100
+val model = LogisticRegressionWithSGD.train(trainSet, numIterations)
+
+val validPredicts = testSet.map(x => (model.predict(x.features),x.label))
+
+validPredicts.take(20)
+res8: Array[(Double, Double)] = Array((1.0,1.0), (1.0,1.0), (1.0,0.0), (1.0,1.0), (1.0,0.0), (1.0,0.0), (1.0,1.0), (1.0,0.0), (1.0,0.0), (1.0,1.0), (1.0,1.0), (1.0,1.0), (1.0,0.0), (1.0,1.0), (1.0,0.0), (1.0,0.0), (1.0,1.0), (1.0,0.0), (1.0,1.0), (1.0,0.0))
+
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+val metrics = new BinaryClassificationMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 63
+validPredicts.count                            // 161
+model.getClass.getSimpleName
+metrics.areaUnderPR   // 0.3836477987421384
+metrics.areaUnderROC  // 0.51
+
+---- MLlib SVM regression --------------
+
+import org.apache.spark.mllib.classification.SVMWithSGD
+val numIterations = 100
+val model = SVMWithSGD.train(trainSet, numIterations)
+
+val validPredicts = testSet.map(x => (model.predict(x.features),x.label))
+
+validPredicts.take(20)
+res14: Array[(Double, Double)] = Array((1.0,1.0), (1.0,1.0), (0.0,0.0), (0.0,1.0), (0.0,0.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (0.0,0.0), (0.0,1.0), (0.0,1.0), (0.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (1.0,0.0), (0.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0))
+
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+val metrics = new BinaryClassificationMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 112
+validPredicts.count                            // 161
+model.getClass.getSimpleName
+metrics.areaUnderPR   // 0.5793877066150765
+metrics.areaUnderROC  // 0.6367213114754099
+
+---- MLlib Maive Bayes regression --------------
+
+Features are measures and not frequencies so data does not fit the model
+
+------------------------- Estimation is not so good. But analyze the individual statistics and standardize 
+
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+
+val vectors = data.map{ case LabeledPoint(x,y) => y }
+val matrix = new RowMatrix(vectors)
+val stats = matrix.computeColumnSummaryStatistics
+
+matrixSummary.max
+res23: org.apache.spark.mllib.linalg.Vector = [17.0,199.0,122.0,99.0,846.0,67.1,2.42]
+
+matrixSummary.min
+res22: org.apache.spark.mllib.linalg.Vector = [0.0,0.0,0.0,0.0,0.0,0.0,0.078]
+
+matrixSummary.mean
+res20: org.apache.spark.mllib.linalg.Vector = [3.845052083333332,120.89453125000006,69.10546875000004,20.536458333333346,79.79947916666664,31.992578124999998,0.4718763020833334]
+
+matrixSummary.variance
+res24: org.apache.spark.mllib.linalg.Vector = [11.35405632062148,1022.2483142519555,374.6472712271842,254.4732453281184,13281.180077955234,62.15998395738276,0.10977863787313949]
+
+----- Standardizing features ------------------------------
+
+import org.apache.spark.mllib.feature.StandardScaler
+val vectors = trainSet.map(lp => lp.features)
+val scaler = new StandardScaler(withMean = true, withStd = true).fit(vectors)
+val trainScaled = trainSet.map(lp => LabeledPoint(lp.label,scaler.transform(lp.features)))
+
+----- with MLlib logistic regression ----------------------
+
+import org.apache.spark.mllib.classification.LogisticRegressionWithSGD
+val numIterations = 100
+val model = LogisticRegressionWithSGD.train(trainScaled, numIterations)
+
+val validPredicts = testSet.map(x => (model.predict(scaler.transform(x.features)),x.label))
+
+validPredicts.take(20)
+res25: Array[(Double, Double)] = Array((1.0,1.0), (1.0,1.0), (1.0,0.0), (1.0,1.0), (0.0,0.0), (1.0,0.0), (1.0,1.0), (0.0,0.0), (0.0,0.0), (1.0,1.0), (1.0,1.0), (0.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0))
+
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+val metrics = new BinaryClassificationMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 118
+validPredicts.count                            // 161
+model.getClass.getSimpleName
+metrics.areaUnderPR    // 0.5909329631991598
+metrics.areaUnderROC   // 0.7402459016393442
+
+----- with MLlib SVM regression ----------------------
+
+import org.apache.spark.mllib.classification.SVMWithSGD
+val numIterations = 100
+val model = SVMWithSGD.train(trainScaled, numIterations)
+
+val validPredicts = testSet.map(x => (model.predict(scaler.transform(x.features)),x.label))
+
+validPredicts.take(20)
+res31: Array[(Double, Double)] = Array((1.0,1.0), (1.0,1.0), (1.0,0.0), (1.0,1.0), (0.0,0.0), (1.0,0.0), (1.0,1.0), (0.0,0.0), (0.0,0.0), (1.0,1.0), (1.0,1.0), (0.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (0.0,0.0), (1.0,1.0), (0.0,0.0), (1.0,1.0), (0.0,0.0))
+
+import org.apache.spark.mllib.evaluation.BinaryClassificationMetrics
+val metrics = new BinaryClassificationMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 120
+validPredicts.count                            // 161
+model.getClass.getSimpleName
+metrics.areaUnderPR    // 0.6046522221448132
+metrics.areaUnderROC   // 0.7534426229508197
+
+----- with Maive Bayes regression ----------------------
+
+not possible because standardization produces negative values
