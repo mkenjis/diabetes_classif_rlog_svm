@@ -1,3 +1,4 @@
+---- Feature extraction & Data Munging --------------
 
 val df = spark.read.format("csv").option("header","true").option("inferSchema","true").load("diabetes/diabetes.csv")
 
@@ -90,7 +91,7 @@ model.getClass.getSimpleName
 metrics.areaUnderPR   // 0.5793877066150765
 metrics.areaUnderROC  // 0.6367213114754099
 
----- MLlib Maive Bayes regression --------------
+---- MLlib Naive Bayes regression --------------
 
 Features are measures and not frequencies so data does not fit the model
 
@@ -158,7 +159,3 @@ validPredicts.count                            // 161
 model.getClass.getSimpleName
 metrics.areaUnderPR    // 0.6046522221448132
 metrics.areaUnderROC   // 0.7534426229508197
-
------ with Maive Bayes regression ----------------------
-
-not possible because standardization produces negative values
