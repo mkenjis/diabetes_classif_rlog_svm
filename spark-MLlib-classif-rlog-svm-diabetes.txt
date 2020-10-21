@@ -95,7 +95,7 @@ metrics.areaUnderROC  // 0.6367213114754099
 
 Features are measures and not frequencies so data does not fit the model
 
-------------------------- Estimation is not so good. But analyze the individual statistics and standardize 
+----- Estimation is not so good. But analyze the individual statistics and standardize 
 
 import org.apache.spark.mllib.linalg.distributed.RowMatrix
 
